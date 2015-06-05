@@ -1,0 +1,21 @@
+{application, ircbot,
+ [
+  {description, "Boardets IRC bot."},
+  {vsn, "1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {mod, { ircbot_app, []}},
+  {env, [
+    {host, "chat.freenode.net"},
+    {port, 6697},
+    {password, none},
+    {ssl, true},
+    {channels, ["#erlol"]},
+    {trigger, "Erling:"},
+    {nick, "Erling"},
+    {realname, "Erling Hansen"}
+    ]}
+ ]}.

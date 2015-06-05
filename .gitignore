@@ -1,0 +1,8 @@
+*.beam
+test.config
+.rebar
+erl_crash.dump
+Session.vim
+deps/
+/ebin
+/UNVERSIONED
