@@ -1,4 +1,4 @@
--module(pgsql_server).
+-module(pgsql).
 -behaviour(gen_server).
 -define(SERVER, ?MODULE).
 
@@ -37,21 +37,17 @@ init([DBHost, DBPort, DBUser, DBPass, DBName]) ->
     monitor_posts(State#state{connection=C}),
     {ok, State}.
 
-handle_call(_Request, _From, State) ->
-    {reply, ok, State}.
 
-handle_cast(_Msg, State) ->
-    {noreply, State}.
-
-handle_info(_Info, State) ->
-    {noreply, State}.
+handle_call(_Request, _From, State) -> {reply, ok, State}.
+handle_cast(_Msg, State) -> {noreply, State}.
+handle_info(_Info, State) -> {noreply, State}.
+    
 
 terminate(_Reason, #state{connection=C} = _State) ->
     epgsql:close(C),
     ok.
 
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
+code_change(_OldVsn, State, _Extra) -> {ok, State}.
 
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
@@ -74,20 +70,20 @@ monitor_posts(State) ->
 parse_posts([], Processed) ->
     lists:reverse(Processed);
 parse_posts([{Name, Content} | Rest], Processed) ->
-    Name_ = parse_post_in_fucked_encoding(Name),
-    Content_ = parse_post_in_fucked_encoding(Content),
+    Name_ = parse_fucked_encoding(Name),
+    Content_ = parse_fucked_encoding(Content),
     parse_posts(Rest, [{Name_, Content_} | Processed]).
 
 
-parse_post_in_fucked_encoding(Post_) ->
+parse_fucked_encoding(Post_) ->
     Post_urldecoded = list_to_binary(url_decode(binary_to_list(Post_))),
     Replace = fun(Post, Patt, Replac) -> binary:replace(Post, Patt, Replac, [global]) end,
     Post_wtfdecoded = Replace(Replace(Post_urldecoded, <<"<br+/>\r">>, <<"">>), <<"+">>, <<" ">>),
     binary:split(Post_wtfdecoded, <<"\n">>, [global]).
 
 print_posts_to_irc([{[Name], Contents} | Rest]) ->
-    ircbot_server:say(<<"\x02Nyt boardindlaeg\x0f fra \x02" ,Name/binary ,"\x0f:\n">>),
-    [ ircbot_server:say(Content_part) || Content_part <- Contents],
+    irc:say(<<"\x02Nyt boardindlaeg\x0f fra \x02" ,Name/binary ,"\x0f:\n">>),
+    [ irc:say(Content_part) || Content_part <- Contents],
     print_posts_to_irc(Rest);
 print_posts_to_irc([]) -> ok.
     

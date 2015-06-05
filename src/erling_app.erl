@@ -1,4 +1,4 @@
--module(ircbot_app).
+-module(erling_app).
 
 -behaviour(application).
 
@@ -10,7 +10,7 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
-    ircbot_sup:start_link().
+    erling_sup:start_link().
 
 stop(_State) ->
     ok.

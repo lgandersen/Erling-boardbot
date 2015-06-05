@@ -1,4 +1,4 @@
-{application, ircbot,
+{application, erling,
  [
   {description, "Boardets IRC bot."},
   {vsn, "1"},
@@ -7,7 +7,7 @@
                   kernel,
                   stdlib
                  ]},
-  {mod, { ircbot_app, []}},
+  {mod, { erling_app, []}},
   {env, [
     {irchost, "chat.freenode.net"},
     {ircport, 6697},

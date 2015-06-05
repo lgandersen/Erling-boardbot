@@ -1,4 +1,4 @@
--module(ircbot_server).
+-module(irc).
 -behaviour(gen_server).
 -define(SERVER, ?MODULE).
 -define(LINESEPERATOR, "\r\n").
