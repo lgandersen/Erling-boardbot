@@ -23,18 +23,27 @@ start_link() ->
 %% ===================================================================
 
 init([]) ->
-    {ok, Host} = application:get_env(ircbot, host),
-    {ok, Port} = application:get_env(ircbot, port),
-    {ok, Password} = application:get_env(ircbot, password),
-    {ok, SSL} = application:get_env(ircbot, ssl),
+    {ok, IRCHost} = application:get_env(ircbot, host),
+    {ok, IRCPort} = application:get_env(ircbot, port),
+    {ok, IRCPass} = application:get_env(ircbot, password),
+    {ok, IRCSSL} = application:get_env(ircbot, ssl),
     {ok, Channels} = application:get_env(ircbot, channels),
     {ok, Trigger} = application:get_env(ircbot, trigger),
     {ok, Nick} = application:get_env(ircbot, nick),
     {ok, Realname} = application:get_env(ircbot, realname),
+    {ok, DBHost} = application:get_env(ircbot, dbhost),
+    {ok, DBPort} = application:get_env(ircbot, dbport),
+    {ok, DBUser} = application:get_env(ircbot, dbuser),
+    {ok, DBPass} = application:get_env(ircbot, dbpass),
+    {ok, DBName} = application:get_env(ircbot, dbname),
     Ircbot = {ircbot_server, {
-        ircbot_server, start_link, [[Host, Port, Password, SSL, Channels, Trigger, Nick, Realname]]},
+        ircbot_server, start_link, [[IRCHost, IRCPort, IRCPass, IRCSSL, Channels, Trigger, Nick, Realname]]},
+        permanent, 2000, worker, dynamic
+        },
+    SQLdaemon = {pgsql_server, {
+        pgsql_server, start_link, [[DBHost, DBPort, DBUser, DBPass, DBName]]},
         permanent, 2000, worker, dynamic
         },
 
-    {ok, { {one_for_one, 5, 10}, [Ircbot]} }.
+    {ok, { {one_for_one, 5, 10}, [Ircbot, SQLdaemon]} }.
 

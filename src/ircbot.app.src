@@ -9,13 +9,18 @@
                  ]},
   {mod, { ircbot_app, []}},
   {env, [
-    {host, "chat.freenode.net"},
-    {port, 6697},
-    {password, none},
-    {ssl, true},
+    {irchost, "chat.freenode.net"},
+    {ircport, 6697},
+    {ircpass, none}, % | string()
+    {ircssl, true},
     {channels, ["#erlol"]},
     {trigger, "Erling:"},
     {nick, "Erling"},
-    {realname, "Erling Hansen"}
+    {realname, "Erling Hansen"},
+    {dbhost, "localhost"},
+    {dbport, 5432},
+    {dbuser, "username"},
+    {dbpass, "password"},
+    {dbname, "databasename"}
     ]}
  ]}.

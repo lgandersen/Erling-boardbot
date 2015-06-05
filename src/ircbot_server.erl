@@ -11,7 +11,7 @@
 %% API Function Exports
 %% ------------------------------------------------------------------
 
--export([start_link/1]).
+-export([start_link/1, say/1]).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Exports
@@ -26,6 +26,13 @@
 
 start_link([Host, Port, Password, SSL, Channels, Trigger, Nick, Realname]) ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [Host, Port, Password, SSL, Channels, Trigger, Nick, Realname], []).
+
+say(Msg) -> say_sanitized(Msg).
+
+say_sanitized(<<>>) -> ok;
+say_sanitized(<<" ", Msg/binary>>) -> say(Msg);
+say_sanitized(Msg) -> gen_server:cast(?SERVER, {say, Msg}).
+
 
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
@@ -49,7 +56,7 @@ init([Host, Port, Password, SSL, Channels, Trigger, Nick, Realname]) ->
             ircsend(password, Password, State),
             ircsend(nick, Nick, State),
             ircsend(user, Realname, State),
-            [ircsend(join_channel, Channel, State) || Channel -> Channels ];
+            [ircsend(join_channel, Channel, State) || Channel <- Channels ];
         {error, Reason} ->
             State = State_,
             io:format("Connect error: ~s~n", [inet:format_error(Reason)])
@@ -60,6 +67,9 @@ init([Host, Port, Password, SSL, Channels, Trigger, Nick, Realname]) ->
 handle_call(_Request, _From, State) -> {reply, ok, State}.
 
 
+handle_cast({say, Msg}, State) ->
+    ircsend(privmsg_channels, Msg, State),
+    {noreply, State};
 handle_cast(_Msg, State) -> {noreply, State}.
 
 
@@ -84,7 +94,8 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
 log_msg(Msg) ->
-    io:format(Msg);
+    io:format(Msg).
+
 log_msg(Msg_template, Msg_tokens) ->
     io:format(Msg_template, [string:join(Msg_tokens, " ")]).
 
@@ -99,17 +110,24 @@ ircsend(Msg, State) ->
         Connection:send(Sock, string:concat(Msg, ?LINESEPERATOR))
     end.
 
+ircsend(privmsg_channels, Msg, State) ->
+    [ ircsend({privmsg_channel, Channel}, Msg, State) || Channel <- State#state.channels];
+ircsend({privmsg_channel, Channel}, Msg, State) when is_binary(Msg)==true ->
+    Channel_bin = list_to_binary(Channel),
+    ircsend(<<"PRIVMSG " , Channel_bin/binary, " :", Msg/binary>>, State);
+ircsend({privmsg_channel, Channel}, Msg, State) ->
+    ircsend("PRIVMSG " ++ Channel ++ " :" ++ Msg, State);
+ircsend(nick, Nick, State) -> ircsend("NICK " ++ Nick, State);
+ircsend(join_channel, Channel, State) -> ircsend("JOIN " ++ Channel, State);
+ircsend(user, Realname, State) -> ircsend("USER lol lool bla :" ++ Realname, State);
 ircsend(password, Password, State) ->
     case Password of
         none ->
             ok;
         Password_ ->
             ircsend("PASS " ++ Password_, State)
-    end;
-ircsend(nick, Nick, State) -> ircsend("NICK " ++ Nick, State);
-ircsend(join_channel, Channel, State) -> ircsend("JOIN " ++ Channel, State),
-ircsend(user, Realname, State) -> ircsend("USER lol lool bla :" ++ Realname, State).
-    
+    end.
+
 
 get_sender_nick(Hostmask) ->
     [SenderNick | _] = string:tokens(Hostmask, "!"),
@@ -118,7 +136,6 @@ get_sender_nick(Hostmask) ->
 
 check_channel(Channel, State) ->
     check_channel_(Channel, State#state.channels).
-
 
 check_channel_(Channel, [Channel_next | _Rest]) when Channel == Channel_next ->
     true;
