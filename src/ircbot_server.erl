@@ -49,16 +49,19 @@ init([Host, Port, Password, SSL, Channels, Trigger, Nick, Realname]) ->
             ircsend(password, Password, State),
             ircsend(nick, Nick, State),
             ircsend(user, Realname, State),
-            lists:map(fun(Channel) -> ircsend("JOIN " ++ Channel, State) end, Channels);
+            [ircsend(join_channel, Channel, State) || Channel -> Channels ];
         {error, Reason} ->
             State = State_,
             io:format("Connect error: ~s~n", [inet:format_error(Reason)])
     end,
     {ok, State}.
 
+
 handle_call(_Request, _From, State) -> {reply, ok, State}.
 
+
 handle_cast(_Msg, State) -> {noreply, State}.
+
 
 handle_info({_, _Sock, <<$:, Msg/binary>>}, State) ->
     Msg_tokens = string:tokens(binary_to_list(Msg), " "),
@@ -80,7 +83,11 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
-log_msg(Msg_template, Msg_tokens) -> io:format(Msg_template, [string:join(Msg_tokens, " ")]).
+log_msg(Msg) ->
+    io:format(Msg);
+log_msg(Msg_template, Msg_tokens) ->
+    io:format(Msg_template, [string:join(Msg_tokens, " ")]).
+
 
 ircsend(Msg, State) ->
     Sock = State#state.sock,
@@ -100,14 +107,18 @@ ircsend(password, Password, State) ->
             ircsend("PASS " ++ Password_, State)
     end;
 ircsend(nick, Nick, State) -> ircsend("NICK " ++ Nick, State);
+ircsend(join_channel, Channel, State) -> ircsend("JOIN " ++ Channel, State),
 ircsend(user, Realname, State) -> ircsend("USER lol lool bla :" ++ Realname, State).
     
+
 get_sender_nick(Hostmask) ->
     [SenderNick | _] = string:tokens(Hostmask, "!"),
     SenderNick.
 
+
 check_channel(Channel, State) ->
     check_channel_(Channel, State#state.channels).
+
 
 check_channel_(Channel, [Channel_next | _Rest]) when Channel == Channel_next ->
     true;
@@ -127,6 +138,7 @@ prepare_privmsg([Firstword | Rest]) ->
     NewRest = lists:reverse([NewLastword | ReversedRest]),
     [string:substr(Firstword, 2) | NewRest ].
 
+
 parse_input([Hostmask, "PRIVMSG", Receiver | Privmsg] = Msg_tokens, State) when Receiver == State#state.nick ->
     log_msg("Private msg received: ~p~n", Msg_tokens),
     parse_privmsg(private, prepare_privmsg(Privmsg), get_sender_nick(Hostmask), State);
@@ -144,12 +156,13 @@ parse_input([_HostMask | _Rest] = Msg_tokens, _State) ->
 parse_input(Input, _State) ->
     log_msg("Could not parse this input: ~p~n", Input).
 
+
 parse_privmsg({channel, Channel}, [Trigger, "post" | _Msgtokens_Rest], SenderNick, State) when Trigger == State#state.trigger ->
-    io:format("Post request in channel!\n");
+    log_msg("Post request in channel!\n");
 parse_privmsg({channel, Channel}, [Trigger, "hello"], SenderNick, State) when Trigger == State#state.trigger ->
     ircsend("PRIVMSG " ++ Channel ++ " :" ++ SenderNick ++ ": Hej med dig.", State);
 parse_privmsg(private, "post", SenderNick, State) ->
-    io:format("Private post request!\n");
+    log_msg("Private post request!\n");
 parse_privmsg(private, "hello", SenderNick, State) ->
     ircsend("PRIVMSG " ++ SenderNick ++ " :Hej med dig.", State);
 parse_privmsg(_, Privmsg, _Sender, State) ->
