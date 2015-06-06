@@ -135,31 +135,27 @@ get_sender_nick(Hostmask) ->
     SenderNick.
 
 where(SentTo, MyChannels, MyNick) ->
-    InChannel = is_channel(SentTo, MyChannels),
+    InChannel = in_channels(SentTo, MyChannels),
     if
       SentTo == MyNick -> me;
       InChannel -> channel;
       true -> neither
     end.
 
-is_channel(Channel, [Channel_next | Rest]) ->
-    case Channel == Channel_next of
-      true -> true;
-      false -> is_channel(Channel, Rest)
-    end;
-is_channel(_Channel, []) -> false.
+
+in_channels(Channel, Channels) ->
+    lists:any(fun(Chan) -> Chan == Channel end, Channels).
 
 
 % Remove colon at beginning of the msg and '\r\n' of last word
-prepare_privmsg([FirstWord_ | Rest]) ->
+format([FirstWord_ | Rest]) ->
     FirstWord = string:substr(FirstWord_, 2), % Remove colon
     Remove_linebreak = fun(Word) -> string:substr(Word, 1, string:len(Word) - 2) end,
     case length(Rest) of
       0 ->
         Prepared_msg = [Remove_linebreak(FirstWord)];
       _ ->
-        [LastWord | ReverseRest] = lists:reverse(Rest),
-        NewRest = lists:reverse([Remove_linebreak(LastWord) | ReverseRest]),
+        NewRest = lists:append(lists:droplast(Rest), [Remove_linebreak(lists:last(Rest))]),
         Prepared_msg = [FirstWord | NewRest]
     end,
     Prepared_msg.
@@ -170,10 +166,10 @@ parse_input([Hostmask, "PRIVMSG", SentTo | Privmsg] = Msg_tokens, #state{nick=My
     case where(SentTo, MyChannels, MyNick)  of
       channel ->
         log_msg("Channel msg received: ~p~n", Msg_tokens),
-        parse_privmsg({channel, {SentTo, SenderNick}}, prepare_privmsg(Privmsg), State);
+        parse_msg_from_channel({channel@nick, {SentTo, SenderNick}}, format(Privmsg), State);
       me ->
         log_msg("Private msg received: ~p~n", Msg_tokens),
-        parse_privmsg({private, SenderNick}, prepare_privmsg(Privmsg), State);
+        parse_msg_from_user({private, SenderNick}, format(Privmsg), State);
       neither ->
         log_msg("Could not parse PRIVMSG: ~p~n", Msg_tokens)
     end;
@@ -181,16 +177,17 @@ parse_input(Input, _State) ->
     log_msg("Non-PRIVMSG msg received: ~p~n", Input).
 
 
-parse_privmsg({channel, ReplyInfo}, [Trigger, "post", PostName | Post_tokens], State) when Trigger == State#state.trigger ->
-    post_msg({channel@nick, ReplyInfo}, PostName, Post_tokens, State);
-parse_privmsg({channel, ReplyInfo}, [Trigger, "hello"], State) when Trigger == State#state.trigger ->
-    ircsend({channel@nick, ReplyInfo}, "Hej med dig!", State);
-parse_privmsg({private, ReplyInfo}, ["post", PostName | Post_tokens], State) ->
-    post_msg({private, ReplyInfo}, PostName, Post_tokens, State);
-parse_privmsg({private, ReplyInfo}, ["hello"], State) ->
-    ircsend({private, ReplyInfo}, "Hej med dig!", State);
-parse_privmsg(_, Privmsg, _State) ->
-    log_msg("This message was probably not for me: '~p'\n", Privmsg).
+parse_msg_from_channel(Target, [Trigger, "post", PostName | Post_tokens], State) when Trigger == State#state.trigger ->
+    post_msg(Target, PostName, Post_tokens, State);
+parse_msg_from_channel(Target, [Trigger, "hello"], State) when Trigger == State#state.trigger ->
+    ircsend(Target, "Hej med dig!", State);
+parse_msg_from_channel(_, Privmsg, _) -> log_msg("This message was probably not for me: '~p'\n", Privmsg).
+
+parse_msg_from_user(Target, ["post", PostName | Post_tokens], State) ->
+    post_msg(Target, PostName, Post_tokens, State);
+parse_msg_from_user(Target, ["hello"], State) ->
+    ircsend(Target, "Hej med dig!", State);
+parse_msg_from_user(_, Privmsg, _) -> log_msg("This message was probably not for me: '~p'\n", Privmsg).
 
 
 post_msg(Target, PostName_, Msg_tokens, State) ->

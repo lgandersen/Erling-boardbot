@@ -31,6 +31,7 @@ init([]) ->
     {ok, Trigger} = application:get_env(erling, trigger),
     {ok, Nick} = application:get_env(erling, nick),
     {ok, Realname} = application:get_env(erling, realname),
+    {ok, BoardURL} = application:get_env(erling, boardurl),
     {ok, DBHost} = application:get_env(erling, dbhost),
     {ok, DBPort} = application:get_env(erling, dbport),
     {ok, DBUser} = application:get_env(erling, dbuser),
@@ -41,7 +42,7 @@ init([]) ->
         permanent, 2000, worker, dynamic
         },
     SQLdaemon = {pgsql, {
-        pgsql, start_link, [[DBHost, DBPort, DBUser, DBPass, DBName]]},
+        pgsql, start_link, [[DBHost, DBPort, DBUser, DBPass, DBName, BoardURL]]},
         permanent, 2000, worker, dynamic
         },
 

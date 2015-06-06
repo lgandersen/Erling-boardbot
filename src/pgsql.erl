@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 -define(SERVER, ?MODULE).
 
--record(state, {host, port, username, password, database, connection, last_post, last_splash}).
+-record(state, {boardurl, host, port, username, password, database, connection, last_post, last_splash}).
 
 %% ------------------------------------------------------------------
 %% API Function Exports
@@ -21,8 +21,8 @@
 %% API Function Definitions
 %% ------------------------------------------------------------------
 
-start_link([DBHost, DBPort, DBUser, DBPass, DBName]) ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [DBHost, DBPort, DBUser, DBPass, DBName], []).
+start_link([DBHost, DBPort, DBUser, DBPass, DBName, BoardURL]) ->
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [DBHost, DBPort, DBUser, DBPass, DBName, BoardURL], []).
 
 post(Poster, Post) ->
     gen_server:cast(?SERVER, {post, [Poster, Post]}).
@@ -32,14 +32,14 @@ post(Poster, Post) ->
 %% gen_server Function Definitions
 %% ------------------------------------------------------------------
 
-init([DBHost, DBPort, DBUser, DBPass, DBName]) ->
-    State_ = #state{host=DBHost, port=DBPort, username=DBUser, password=DBPass, database=DBName},
+init([DBHost, DBPort, DBUser, DBPass, DBName, BoardURL]) ->
+    State_ = #state{host=DBHost, port=DBPort, username=DBUser, password=DBPass, database=DBName, boardurl=list_to_binary(BoardURL)},
     {ok, C} = epgsql:connect(DBHost, DBUser, DBPass, [
         {database, DBName},
         {timeout, 4000}
         ]),
     State = State_#state{connection=C},
-    spawn_link(fun() -> monitor_posts(State) end),
+    spawn_link(fun() -> monitor_boardet(State) end),
     {ok, State}.
 
 
@@ -75,28 +75,24 @@ last_post_and_splash(C) ->
     {LastPostId, LastSplashId}.
 
 
-monitor_posts(State) ->
+monitor_boardet(#state{connection=C, boardurl=Url} = State) ->
     timer:sleep(10000),
-    {LastPostId, LastSplashId} = last_post_and_splash(State#state.connection),
-    {ok, _, Posts} = epgsql:equery(State#state.connection, "SELECT name,post FROM posts WHERE id > $1;", [LastPostId]),
-    Posts_parsed = parse_posts(Posts, []),
-    print_posts_to_irc(Posts_parsed),
-    monitor_posts(State#state{last_post=LastPostId, last_splash=LastSplashId}).
+    {LastPostId, LastSplashId} = last_post_and_splash(C),
+    {ok, _, Posts} = epgsql:equery(C, "SELECT name,post FROM posts WHERE id > $1;", [LastPostId]),
+    {ok, _, Splashs} = epgsql:equery(C, "SELECT filepath FROM splash WHERE id > $1;", [LastSplashId]),
+    print_splash_to_irc(Splashs, Url),
+    print_posts_to_irc([{fucked_decode(Name), fucked_decode(Content)} || {Name, Content} <- Posts]),
+    monitor_boardet(State#state{last_post=LastPostId, last_splash=LastSplashId}).
 
 
-parse_posts([], Processed) ->
-    lists:reverse(Processed);
-parse_posts([{Name, Content} | Rest], Processed) ->
-    Name_ = parse_fucked_encoding(Name),
-    Content_ = parse_fucked_encoding(Content),
-    parse_posts(Rest, [{Name_, Content_} | Processed]).
-
-
-parse_fucked_encoding(Post_) ->
-    Post_urldecoded = list_to_binary(url_decode(binary_to_list(Post_))),
+fucked_decode(Post_) ->
     Replace = fun(Post, Patt, Replac) -> binary:replace(Post, Patt, Replac, [global]) end,
+    Post_urldecoded = list_to_binary(url_decode(binary_to_list(Post_))),
     Post_wtfdecoded = Replace(Replace(Post_urldecoded, <<"<br+/>\r">>, <<"">>), <<"+">>, <<" ">>),
     binary:split(Post_wtfdecoded, <<"\n">>, [global]).
+
+print_splash_to_irc(Splashs, Url) ->
+    [irc:say(<<"\x02Nyt splash:\x0f ", Url/binary, Splash/binary>>) || {Splash} <- Splashs].
 
 print_posts_to_irc([{[Name], Contents} | Rest]) ->
     irc:say(<<"\x02Nyt boardindlaeg\x0f fra \x02" ,Name/binary ,"\x0f:\n">>),

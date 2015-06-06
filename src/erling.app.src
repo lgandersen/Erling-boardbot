@@ -17,6 +17,7 @@
     {trigger, "Erling:"},
     {nick, "Erling"},
     {realname, "Erling Hansen"},
+    {boardurl, "https://some.where/"},
     {dbhost, "localhost"},
     {dbport, 5432},
     {dbuser, "username"},
