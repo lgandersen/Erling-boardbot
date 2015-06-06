@@ -122,10 +122,8 @@ ircsend(join_channel, Channel, State) -> ircsend("JOIN " ++ Channel, State);
 ircsend(user, Realname, State) -> ircsend("USER lol lool bla :" ++ Realname, State);
 ircsend(password, Password, State) ->
     case Password of
-        none ->
-            ok;
-        Password_ ->
-            ircsend("PASS " ++ Password_, State)
+        none -> ok;
+        _ -> ircsend("PASS " ++ Password, State)
     end.
 
 
@@ -134,44 +132,42 @@ get_sender_nick(Hostmask) ->
     SenderNick.
 
 
-check_channel(Channel, State) ->
-    check_channel_(Channel, State#state.channels).
-
-check_channel_(Channel, [Channel_next | _Rest]) when Channel == Channel_next ->
-    true;
-check_channel_(Channel, [_Channel_next | Rest]) ->
-    check_channel_(Channel, Rest);
-check_channel_(_Channel, []) ->
-    false.
-
-
-% Remove the colon at the beginning of the msg and the '\r\n' at the end of last word
-prepare_privmsg([OnlyWord]) ->
-    NewWord = string:sub_string(OnlyWord, 1, string:len(OnlyWord) - 2),
-    string:substr(NewWord, 2);
-prepare_privmsg([Firstword | Rest]) ->
-    [ Lastword | ReversedRest ] = lists:reverse(Rest),
-    NewLastword = string:sub_string(Lastword, 1, string:len(Lastword) - 2),
-    NewRest = lists:reverse([NewLastword | ReversedRest]),
-    [string:substr(Firstword, 2) | NewRest ].
-
-
-parse_input([Hostmask, "PRIVMSG", Receiver | Privmsg] = Msg_tokens, State) when Receiver == State#state.nick ->
-    log_msg("Private msg received: ~p~n", Msg_tokens),
-    parse_privmsg(private, prepare_privmsg(Privmsg), get_sender_nick(Hostmask), State);
-parse_input([Hostmask, "PRIVMSG", Channel | Privmsg] = Msg_tokens, State) ->
-    case check_channel(Channel, State) of
-        true ->
-            log_msg("Channel msg received: ~p~n", Msg_tokens),
-            parse_privmsg({channel, Channel}, prepare_privmsg(Privmsg), get_sender_nick(Hostmask), State);
-        false ->
-            log_msg("We should not be on this channel?!: ~p~n", Msg_tokens),
-            could_not_parse
+is_channel(Channel, [Channel_next | Rest]) ->
+    case Channel == Channel_next of
+      true -> true;
+      false -> is_channel(Channel, Rest)
     end;
-parse_input([_HostMask | _Rest] = Msg_tokens, _State) ->
-    log_msg("A non-PRIVMSG msg received: ~p~n", Msg_tokens);
+is_channel(_Channel, []) -> false.
+
+
+% Remove colon at beginning of the msg and '\r\n' of last word
+prepare_privmsg([FirstWord_ | Rest]) ->
+    FirstWord = string:substr(FirstWord_, 2), % Remove colon
+    Remove_linebreak = fun(Word) -> string:substr(Word, 1, string:len(Word) - 2) end,
+    case length(Rest) of
+      0 ->
+        Prepared_msg = [Remove_linebreak(FirstWord)];
+      _ ->
+        [LastWord | ReverseRest] = lists:reverse(Rest),
+        NewRest = lists:reverse([Remove_linebreak(LastWord) | ReverseRest]),
+        Prepared_msg = [FirstWord | NewRest ]
+    end,
+    Prepared_msg.
+
+
+parse_input([Hostmask, "PRIVMSG", Receiver | Privmsg] = Msg_tokens, #state{nick=MyNick, channels=MyChannels} = State) ->
+    case {is_channel(Receiver, MyChannels), Receiver == MyNick}  of
+      {true, _} ->
+        log_msg("Channel msg received: ~p~n", Msg_tokens),
+        parse_privmsg({channel, Receiver}, prepare_privmsg(Privmsg), get_sender_nick(Hostmask), State);
+      {_, true} ->
+        log_msg("Private msg received: ~p~n", Msg_tokens),
+        parse_privmsg(private, prepare_privmsg(Privmsg), get_sender_nick(Hostmask), State);
+      _ ->
+        log_msg("Could not parse PRIVMSG: ~p~n", Msg_tokens)
+    end;
 parse_input(Input, _State) ->
-    log_msg("Could not parse this input: ~p~n", Input).
+    log_msg("Non-PRIVMSG msg received: ~p~n", Input).
 
 
 parse_privmsg({channel, Channel}, [Trigger, "post" | _Msgtokens_Rest], SenderNick, State) when Trigger == State#state.trigger ->
@@ -180,7 +176,7 @@ parse_privmsg({channel, Channel}, [Trigger, "hello"], SenderNick, State) when Tr
     ircsend("PRIVMSG " ++ Channel ++ " :" ++ SenderNick ++ ": Hej med dig.", State);
 parse_privmsg(private, "post", SenderNick, State) ->
     log_msg("Private post request!\n");
-parse_privmsg(private, "hello", SenderNick, State) ->
+parse_privmsg(private, ["hello"], SenderNick, State) ->
     ircsend("PRIVMSG " ++ SenderNick ++ " :Hej med dig.", State);
 parse_privmsg(_, Privmsg, _Sender, State) ->
     log_msg("This message was probably not for me: '~p'\n", Privmsg).
