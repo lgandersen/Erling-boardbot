@@ -2,13 +2,13 @@
 -behaviour(gen_server).
 -define(SERVER, ?MODULE).
 
--record(state, {host, port, username, password, database, connection, last_post}).
+-record(state, {host, port, username, password, database, connection, last_post, last_splash}).
 
 %% ------------------------------------------------------------------
 %% API Function Exports
 %% ------------------------------------------------------------------
 
--export([start_link/1]).
+-export([start_link/1, post/2]).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Exports
@@ -24,22 +24,34 @@
 start_link([DBHost, DBPort, DBUser, DBPass, DBName]) ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [DBHost, DBPort, DBUser, DBPass, DBName], []).
 
+post(Poster, Post) ->
+    gen_server:cast(?SERVER, {post, [Poster, Post]}).
+
+
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
 %% ------------------------------------------------------------------
 
 init([DBHost, DBPort, DBUser, DBPass, DBName]) ->
-    State = #state{host=DBHost, port=DBPort, username=DBUser, password=DBPass, database=DBName},
+    State_ = #state{host=DBHost, port=DBPort, username=DBUser, password=DBPass, database=DBName},
     {ok, C} = epgsql:connect(DBHost, DBUser, DBPass, [
         {database, DBName},
         {timeout, 4000}
         ]),
-    monitor_posts(State#state{connection=C}),
+    State = State_#state{connection=C},
+    spawn_link(fun() -> monitor_posts(State) end),
     {ok, State}.
 
 
 handle_call(_Request, _From, State) -> {reply, ok, State}.
+
+
+handle_cast({post, [Poster, Post]}, State) ->
+    State_ = insert_post(Poster, Post, State),
+    {noreply, State_};
 handle_cast(_Msg, State) -> {noreply, State}.
+
+
 handle_info(_Info, State) -> {noreply, State}.
     
 
@@ -52,19 +64,24 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
+insert_post(Poster, Post, State) ->
+    Query = "INSERT INTO posts (name, post, time) VALUES ($1, $2, NOW()) RETURNING id;",
+    {ok, _, _, [{PostId}]} = epgsql:equery(State#state.connection, Query, [Poster, Post]),
+    State#state{last_post=PostId}.
 
-last_post(C) ->
-    {ok, _, [{Last_post}]} = epgsql:squery(C, "SELECT max(id) FROM posts;"),
-    Pk = list_to_integer(binary_to_list(Last_post)),
-    Pk.
+
+last_post_and_splash(C) ->
+    {ok, _, [{LastPostId, LastSplashId}]} = epgsql:equery(C, "SELECT max(posts.id), max(splash.id) FROM posts, splash;", []),
+    {LastPostId, LastSplashId}.
+
 
 monitor_posts(State) ->
-    timer:sleep(3000),
-    Pk = last_post(State#state.connection),
-    {ok, _, Posts} = epgsql:equery(State#state.connection, "SELECT name,post FROM posts WHERE id > $1;", [Pk]),
+    timer:sleep(10000),
+    {LastPostId, LastSplashId} = last_post_and_splash(State#state.connection),
+    {ok, _, Posts} = epgsql:equery(State#state.connection, "SELECT name,post FROM posts WHERE id > $1;", [LastPostId]),
     Posts_parsed = parse_posts(Posts, []),
     print_posts_to_irc(Posts_parsed),
-    monitor_posts(State#state{last_post=Pk}).
+    monitor_posts(State#state{last_post=LastPostId, last_splash=LastSplashId}).
 
 
 parse_posts([], Processed) ->
