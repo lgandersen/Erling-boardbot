@@ -71,7 +71,7 @@ insert_post(Poster, Post, State) ->
 
 
 last_post_and_splash(C) ->
-    {ok, _, [{LastPostId, LastSplashId}]} = epgsql:equery(C, "SELECT max(posts.id), max(splash.id) FROM posts, splash;", []),
+    {ok, _, [{LastPostId}, {LastSplashId}]} = epgsql:equery(C, "select max(posts.id) from posts UNION ALL select max(splash.id) from splash;"),
     {LastPostId, LastSplashId}.
 
 
