@@ -34,7 +34,8 @@ post(Poster, Post) ->
 
 init([DBHost, DBPort, DBUser, DBPass, DBName, BoardURL]) ->
     State_ = #state{host=DBHost, port=DBPort, username=DBUser, password=DBPass, database=DBName, boardurl=list_to_binary(BoardURL)},
-    {ok, C} = epgsql:connect(DBHost, DBUser, DBPass, [
+    {ok, Ip} = inet:parse_address(DBHost),
+    {ok, C} = epgsql:connect(Ip, DBUser, DBPass, [
         {database, DBName},
         {timeout, 4000}
         ]),
