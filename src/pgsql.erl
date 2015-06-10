@@ -77,9 +77,9 @@ last_post_and_splash(C) ->
 
 monitor_boardet(#state{connection=C, boardurl=Url} = State) ->
     timer:sleep(10000),
+    {ok, _, Posts} = epgsql:equery(C, "SELECT name,post FROM posts WHERE id > $1;", [State#state.last_post]),
+    {ok, _, Splashs} = epgsql:equery(C, "SELECT filepath FROM splash WHERE id > $1;", [State#state.last_splash]),
     {LastPostId, LastSplashId} = last_post_and_splash(C),
-    {ok, _, Posts} = epgsql:equery(C, "SELECT name,post FROM posts WHERE id > $1;", [LastPostId]),
-    {ok, _, Splashs} = epgsql:equery(C, "SELECT filepath FROM splash WHERE id > $1;", [LastSplashId]),
     print_splash_to_irc(Splashs, Url),
     print_posts_to_irc([{fucked_decode(Name), fucked_decode(Content)} || {Name, Content} <- Posts]),
     monitor_boardet(State#state{last_post=LastPostId, last_splash=LastSplashId}).
