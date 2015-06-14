@@ -84,6 +84,7 @@ handle_info({_, _Sock, _Data}, State) ->
     {noreply, State}.
 
 terminate(_Reason, State) ->
+    io:format("HVAD HELVEDE SKER DER?!?!?\n"),
     Connection = State#state.connection,
     Connection:close(State#state.sock),
     ok.
@@ -163,7 +164,7 @@ format([FirstWord_ | Rest]) ->
 
 parse_input([Hostmask, "PRIVMSG", SentTo | Privmsg] = Msg_tokens, #state{nick=MyNick, channels=MyChannels} = State) ->
     SenderNick = get_sender_nick(Hostmask),
-    case where(SentTo, MyChannels, MyNick)  of
+    case where(SentTo, MyChannels, MyNick) of
       channel ->
         log_msg("Channel msg received: ~p~n", Msg_tokens),
         parse_msg_from_channel({channel@nick, {SentTo, SenderNick}}, format(Privmsg), State);
@@ -177,25 +178,25 @@ parse_input(Input, _State) ->
     log_msg("Non-PRIVMSG msg received: ~p~n", Input).
 
 
-parse_msg_from_channel(Target, [Trigger, "post", PostName | Post_tokens], State) when Trigger == State#state.trigger ->
-    post_msg(Target, PostName, Post_tokens, State);
+parse_msg_from_channel(Target, [Trigger, "post" | Msg_tokens], State) when Trigger == State#state.trigger ->
+    post_msg(Target, Msg_tokens, State);
 parse_msg_from_channel(Target, [Trigger, "hello"], State) when Trigger == State#state.trigger ->
     ircsend(Target, "Hej med dig!", State);
 parse_msg_from_channel(_, Privmsg, _) -> log_msg("This message was probably not for me: '~p'\n", Privmsg).
 
-parse_msg_from_user(Target, ["post", PostName | Post_tokens], State) ->
-    post_msg(Target, PostName, Post_tokens, State);
+parse_msg_from_user(Target, ["post", Msg_tokens], State) ->
+    post_msg(Target, Msg_tokens, State);
 parse_msg_from_user(Target, ["hello"], State) ->
     ircsend(Target, "Hej med dig!", State);
 parse_msg_from_user(_, Privmsg, _) -> log_msg("This message was probably not for me: '~p'\n", Privmsg).
 
 
-post_msg(Target, PostName_, Msg_tokens, State) ->
-    Msg = string:join(Msg_tokens, " "),
-    PostName = string:strip(PostName_, both, $#),
-    case length(PostName_) - length(PostName) == 4 of
-      true ->
-        pgsql:post(PostName, Msg),
-        ircsend(Target, "Beskeden er sendt!", State);
-      false -> ircsend(Target, "Kunne ikke formatere din Board besked.", State)
+post_msg(Target, MsgTokens, State) ->
+    Msg = string:join(MsgTokens, " "),
+    case string:tokens(string:strip(Msg, both, $ ), "##") of
+        [Author, Content] ->
+          pgsql:post(Author, Content),
+          ircsend(Target, "As you wish..", State);
+        _ ->
+            ircsend(Target, "Kunne ikke formatere din Board besked :<", State)
     end.
