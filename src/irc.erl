@@ -42,7 +42,7 @@ init([Host, Port, Password, SSL, Channels, Trigger, Nick, Realname]) ->
     State_ = #state{host=Host, port=Port, password=Password, ssl=SSL, channels=Channels, nick=Nick, realname=Realname, trigger=Trigger},
 
     Connection = case SSL of
-        true ->       
+        true ->
             ssl:start(),
             ssl;
         false ->
@@ -56,7 +56,11 @@ init([Host, Port, Password, SSL, Channels, Trigger, Nick, Realname]) ->
             ircsend(password, Password, State),
             ircsend(nick, Nick, State),
             ircsend(user, Realname, State),
-            [ircsend(join_channel, Channel, State) || Channel <- Channels ];
+            spawn_link(fun() ->
+                               timer:sleep(10000),
+                               [ircsend(join_channel, Channel, State) || Channel <- Channels ]
+                       end);
+
         {error, Reason} ->
             State = State_,
             io:format("Connect error: ~s~n", [inet:format_error(Reason)])
