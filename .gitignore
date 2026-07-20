@@ -6,3 +6,8 @@ Session.vim
 deps/
 /ebin
 /UNVERSIONED
+
+# rebar3
+/_build/
+/.rebar3
+rebar3.crashdump
