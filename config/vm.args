@@ -1,17 +1,15 @@
 ## Erling VM arguments.
-## Runs as a single self-contained node in a container -- no distribution,
-## no epmd, no remote shell exposed on the network.
+## A single self-contained node. relx's start script needs a node name for
+## its foreground/remote_console/stop commands, so we run a short-named node;
+## epmd binds loopback only, which is harmless inside the container.
 
 -sname erling
 -setcookie erling_local_only
 
-## Do not start distribution at all: the bot is an outbound-only client and
-## nothing needs to connect to its VM.
--start_epmd false
--proto_dist inet_tcp
-
 +K true
 +A 8
 
-## Fail fast and let the container runtime restart us rather than limping on.
--heart false
+## No OS-level heart monitor: the container runtime is the supervisor here, so
+## a crash should exit the node and let the runtime restart the container.
+## (heart is off by default; it is enabled only by passing -heart, so there is
+## no flag to set here -- `-heart false' is invalid and aborts the boot.)
