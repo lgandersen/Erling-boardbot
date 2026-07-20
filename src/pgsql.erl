@@ -33,18 +33,25 @@ post(Poster, Post) ->
 %% ------------------------------------------------------------------
 
 init([DBHost, DBPort, DBUser, DBPass, DBName, BoardURL]) ->
-    State_ = #state{host=DBHost, port=DBPort, username=DBUser, password=DBPass, database=DBName, boardurl=list_to_binary(BoardURL)},
-    case inet:parse_address(DBHost) of
+    Host = case inet:parse_address(DBHost) of
       {ok, DBHost_parsed} ->
-        ok;
+        DBHost_parsed;
+
       {error, einval} ->
-        DBHost_parsed = DBHost
+        DBHost
     end,
-    {ok, C} = epgsql:connect(DBHost_parsed, DBUser, DBPass, [
+    {ok, DBConnection} = epgsql:connect(Host, DBUser, DBPass, [
         {database, DBName},
         {timeout, 4000}
         ]),
-    State = State_#state{connection=C},
+    State = #state{host       = DBHost,
+                   port       = DBPort,
+                   username   = DBUser,
+                   password   = DBPass,
+                   database   = DBName,
+                   boardurl   = list_to_binary(BoardURL),
+                   connection = DBConnection
+                   },
     spawn_link(fun() -> monitor_boardet(State) end),
     {ok, State}.
 
@@ -83,7 +90,7 @@ last_post_and_splash(C) ->
 
 monitor_boardet(#state{connection=C, boardurl=Url} = State) ->
     timer:sleep(10000),
-    {ok, _, Posts} = epgsql:equery(C, "SELECT name,post FROM posts WHERE id > $1;", [State#state.last_post]),
+    {ok, _, Posts} = epgsql:equery(C, "SELECT name, post FROM posts WHERE id > $1;", [State#state.last_post]),
     {ok, _, Splashs} = epgsql:equery(C, "SELECT filepath FROM splash WHERE id > $1;", [State#state.last_splash]),
     {LastPostId, LastSplashId} = last_post_and_splash(C),
     print_splash_to_irc(Splashs, Url),
@@ -97,20 +104,21 @@ fucked_decode(Post_) ->
     Post_wtfdecoded = Replace(Replace(Post_urldecoded, <<"<br+/>\r">>, <<"">>), <<"+">>, <<" ">>),
     binary:split(Post_wtfdecoded, <<"\n">>, [global]).
 
+
 print_splash_to_irc(Splashs, Url) ->
     [irc:say(<<"\x02Nyt splash:\x0f ", Url/binary, Splash/binary>>) || {Splash} <- Splashs].
 
+
 print_posts_to_irc([{[Name], Contents} | Rest]) ->
     irc:say(<<"\x02Nyt boardindlaeg\x0f fra \x02" ,Name/binary ,"\x0f:\n">>),
-    [ irc:say(Content_part) || Content_part <- Contents],
+    [irc:say(Content_part) || Content_part <- Contents],
     print_posts_to_irc(Rest);
+
 print_posts_to_irc([]) -> ok.
-    
 
 %% ------------------------------------------------------------------
 %% Urldecoder code snippet taken from YAWS 
 %% ------------------------------------------------------------------
-
 url_decode(Path) ->
     {DecPath, QS} = url_decode(Path, []),
     DecPath1 = case file:native_name_encoding() of

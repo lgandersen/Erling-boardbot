@@ -27,11 +27,18 @@
 start_link([Host, Port, Password, SSL, Channels, Trigger, Nick, Realname]) ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [Host, Port, Password, SSL, Channels, Trigger, Nick, Realname], []).
 
-say(Msg) -> say_sanitized(Msg).
+say(Msg) ->
+    say_sanitized(Msg).
 
-say_sanitized(<<>>) -> ok;
-say_sanitized(<<" ", Msg/binary>>) -> say(Msg);
-say_sanitized(Msg) -> gen_server:cast(?SERVER, {say, Msg}).
+
+say_sanitized(<<>>) ->
+    ok;
+
+say_sanitized(<<" ", Msg/binary>>) ->
+    say(Msg);
+
+say_sanitized(Msg) ->
+    gen_server:cast(?SERVER, {say, Msg}).
 
 
 %% ------------------------------------------------------------------
@@ -59,13 +66,12 @@ init([Host, Port, Password, SSL, Channels, Trigger, Nick, Realname]) ->
             spawn_link(fun() ->
                                timer:sleep(10000),
                                [ircsend(join_channel, Channel, State) || Channel <- Channels ]
-                       end);
-
+                       end),
+            {ok, State};
         {error, Reason} ->
-            State = State_,
-            io:format("Connect error: ~s~n", [inet:format_error(Reason)])
-    end,
-    {ok, State}.
+            io:format("Connect error: ~s~n", [inet:format_error(Reason)]),
+            {error, Reason}
+    end.
 
 
 handle_call(_Request, _From, State) -> {reply, ok, State}.
@@ -78,6 +84,7 @@ handle_cast(_Msg, State) -> {noreply, State}.
 
 
 handle_info({_, _Sock, <<$:, Msg/binary>>}, State) ->
+    io:format("Test ~p~n", [Msg]),
     Msg_tokens = string:tokens(binary_to_list(Msg), " "),
     parse_input(Msg_tokens, State),
     {noreply, State};
@@ -98,9 +105,6 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
-log_msg(Msg) ->
-    io:format(Msg).
-
 log_msg(Msg_template, Msg_tokens) ->
     io:format(Msg_template, [string:join(Msg_tokens, " ")]).
 
@@ -142,9 +146,12 @@ get_sender_nick(Hostmask) ->
 where(SentTo, MyChannels, MyNick) ->
     InChannel = in_channels(SentTo, MyChannels),
     if
-      SentTo == MyNick -> me;
-      InChannel -> channel;
-      true -> neither
+      SentTo == MyNick ->
+            me;
+      InChannel ->
+            channel;
+      true ->
+            neither
     end.
 
 
@@ -158,12 +165,11 @@ format([FirstWord_ | Rest]) ->
     Remove_linebreak = fun(Word) -> string:substr(Word, 1, string:len(Word) - 2) end,
     case length(Rest) of
       0 ->
-        Prepared_msg = [Remove_linebreak(FirstWord)];
+        [Remove_linebreak(FirstWord)];
       _ ->
         NewRest = lists:append(lists:droplast(Rest), [Remove_linebreak(lists:last(Rest))]),
-        Prepared_msg = [FirstWord | NewRest]
-    end,
-    Prepared_msg.
+        [FirstWord | NewRest]
+    end.
 
 
 parse_input([Hostmask, "PRIVMSG", SentTo | Privmsg] = Msg_tokens, #state{nick=MyNick, channels=MyChannels} = State) ->
@@ -184,9 +190,12 @@ parse_input(Input, _State) ->
 
 parse_msg_from_channel(Target, [Trigger, "post" | Msg_tokens], State) when Trigger == State#state.trigger ->
     post_msg(Target, Msg_tokens, State);
+
 parse_msg_from_channel(Target, [Trigger, "hello"], State) when Trigger == State#state.trigger ->
     ircsend(Target, "Hej med dig!", State);
-parse_msg_from_channel(_, Privmsg, _) -> log_msg("This message was probably not for me: '~p'\n", Privmsg).
+
+parse_msg_from_channel(_, Privmsg, _) ->
+    log_msg("This message was probably not for me: '~p'\n", Privmsg).
 
 parse_msg_from_user(Target, ["post", Msg_tokens], State) ->
     post_msg(Target, Msg_tokens, State);
