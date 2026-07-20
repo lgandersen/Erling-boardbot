@@ -168,7 +168,7 @@ connect(gen_tcp, Host, Port, false) ->
 ssl_opts(Host) ->
     Base = [{verify, verify_peer},
             {depth, 5},
-            {server_name_indication, ensure_list(Host)},
+            {server_name_indication, Host},
             {customize_hostname_check,
              [{match_fun, public_key:pkix_verify_hostname_match_fun(https)}]}],
     case os:getenv("ERLING_IRC_CACERTFILE") of
@@ -337,11 +337,11 @@ join(Bins, Sep) ->
 strip_leading_colon(<<$:, Rest/binary>>) -> Rest;
 strip_leading_colon(Bin) -> Bin.
 
+%% Drop the trailing CRLF (or lone LF). string:trim/3 treats "\r\n" as a single
+%% grapheme cluster and would not remove a bare "\r", so use chomp, which peels
+%% a trailing "\r\n" then any remaining "\r".
 strip_crlf(Bin) ->
-    string:trim(Bin, trailing, "\r\n").
+    string:trim(string:chomp(Bin), trailing, "\r").
 
 to_bin(Bin) when is_binary(Bin) -> Bin;
 to_bin(List) when is_list(List) -> unicode:characters_to_binary(List).
-
-ensure_list(Bin) when is_binary(Bin) -> binary_to_list(Bin);
-ensure_list(List) when is_list(List) -> List.
