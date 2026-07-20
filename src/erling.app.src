@@ -1,17 +1,23 @@
 {application, erling,
  [
   {description, "Boardets IRC bot."},
-  {vsn, "1"},
-  {registered, []},
+  {vsn, "2.0.0"},
+  {registered, [erling_sup, irc, pgsql]},
   {applications, [
                   kernel,
-                  stdlib
+                  stdlib,
+                  crypto,
+                  public_key,
+                  ssl,
+                  epgsql
                  ]},
-  {mod, { erling_app, []}},
+  {mod, {erling_app, []}},
+  %% DEFAULTS ONLY. Every one of these is overridden by the matching ERLING_*
+  %% environment variable at startup -- see erling_config.
   {env, [
     {irchost, "chat.freenode.net"},
     {ircport, 6697},
-    {ircpass, none}, % | string()
+    {ircpass, none}, % none | string()
     {ircssl, true},
     {channels, ["#erlol"]},
     {trigger, "Erling:"},

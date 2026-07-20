@@ -1,0 +1,17 @@
+## Erling VM arguments.
+## Runs as a single self-contained node in a container -- no distribution,
+## no epmd, no remote shell exposed on the network.
+
+-sname erling
+-setcookie erling_local_only
+
+## Do not start distribution at all: the bot is an outbound-only client and
+## nothing needs to connect to its VM.
+-start_epmd false
+-proto_dist inet_tcp
+
++K true
++A 8
+
+## Fail fast and let the container runtime restart us rather than limping on.
+-heart false

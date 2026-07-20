@@ -1,50 +1,50 @@
+%%%-------------------------------------------------------------------
+%%% @doc Top-level supervisor.
+%%%
+%%% Both children are `permanent' and now genuinely restartable: neither does
+%%% blocking network work in `init/1' any more, so a restart is cheap and an
+%%% unreachable peer no longer burns the supervisor's restart budget.
+%%%
+%%% `one_for_one': the two workers are independent. They talk to each other by
+%%% registered name via `gen_server:cast', which is a no-op-ish drop if the
+%%% peer is momentarily down, so neither needs the other restarted alongside
+%%% it.
+%%%
+%%% (The previous version read `host'/`port'/`password'/`ssl' out of the
+%%% application env, but erling.app.src defines those keys as
+%%% `irchost'/`ircport'/`ircpass'/`ircssl' -- so `{ok, _} = get_env(...)'
+%%% raised a badmatch and the application could never start. Configuration now
+%%% goes through erling_config, which has one name for each setting.)
+%%% @end
+%%%-------------------------------------------------------------------
 -module(erling_sup).
 
 -behaviour(supervisor).
 
-%% API
 -export([start_link/0]).
-
-%% Supervisor callbacks
 -export([init/1]).
 
-%% Helper macro for declaring children of supervisor
--define(CHILD(I, Type), {I, {I, start_link, []}, permanent, 5000, Type, [I]}).
-
-%% ===================================================================
-%% API functions
-%% ===================================================================
-
+-spec start_link() -> {ok, pid()} | {error, term()}.
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
-%% ===================================================================
-%% Supervisor callbacks
-%% ===================================================================
-
+-spec init([]) -> {ok, {supervisor:sup_flags(), [supervisor:child_spec()]}}.
 init([]) ->
-    {ok, IRCHost} = application:get_env(erling, host),
-    {ok, IRCPort} = application:get_env(erling, port),
-    {ok, IRCPass} = application:get_env(erling, password),
-    {ok, IRCSSL} = application:get_env(erling, ssl),
-    {ok, Channels} = application:get_env(erling, channels),
-    {ok, Trigger} = application:get_env(erling, trigger),
-    {ok, Nick} = application:get_env(erling, nick),
-    {ok, Realname} = application:get_env(erling, realname),
-    {ok, BoardURL} = application:get_env(erling, boardurl),
-    {ok, DBHost} = application:get_env(erling, dbhost),
-    {ok, DBPort} = application:get_env(erling, dbport),
-    {ok, DBUser} = application:get_env(erling, dbuser),
-    {ok, DBPass} = application:get_env(erling, dbpass),
-    {ok, DBName} = application:get_env(erling, dbname),
-    Ircbot = {irc, {
-        irc, start_link, [[IRCHost, IRCPort, IRCPass, IRCSSL, Channels, Trigger, Nick, Realname]]},
-        permanent, 2000, worker, dynamic
-        },
-    SQLdaemon = {pgsql, {
-        pgsql, start_link, [[DBHost, DBPort, DBUser, DBPass, DBName, BoardURL]]},
-        permanent, 2000, worker, dynamic
-        },
-
-    {ok, { {one_for_one, 5, 10}, [Ircbot, SQLdaemon]} }.
-
+    SupFlags = #{strategy => one_for_one,
+                 intensity => 5,
+                 period => 10},
+    Children = [
+        #{id => irc,
+          start => {irc, start_link, [erling_config:irc()]},
+          restart => permanent,
+          shutdown => 5000,
+          type => worker,
+          modules => [irc]},
+        #{id => pgsql,
+          start => {pgsql, start_link, [erling_config:db()]},
+          restart => permanent,
+          shutdown => 5000,
+          type => worker,
+          modules => [pgsql]}
+    ],
+    {ok, {SupFlags, Children}}.
